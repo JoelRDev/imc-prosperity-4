@@ -204,11 +204,82 @@ Execution has three layers:
 
 Inventory is managed by skewing edges with each product's `skew_coef`. A long position widens the buy edge and tightens the sell edge, encouraging selling; a short position does the opposite. If absolute inventory exceeds half the limit, it also places a position-reducing order at rounded fair value when possible.
 
+### Volatility Smile Fit
+
+The IV anchor described above collapses the whole voucher chain into a single number, the median implied volatility across strikes. That implicitly assumes a flat smile, which is a poor model for an options surface where deeper OTM strikes typically trade at richer IVs than ATM strikes. In parallel to the live algorithm I built a smile-fitting pipeline to see whether a per-strike fitted IV would price the vouchers more accurately than the median.
+
+For every snapshot the pipeline computes, for each `VEV_*` product with a usable mid:
+```
+moneyness = log(strike / spot) / sqrt(T)
+iv        = implied_vol(mid, spot, strike, T)   # bisection on Black-Scholes
+```
+`VELVETFRUIT_EXTRACT` is used as the spot. Time to expiry uses the same calendar as the live algorithm:
+```
+INITIAL_TTE_DAYS = 5
+DAYS_PER_YEAR    = 365
+```
+Each voucher is then classified as a fit candidate if its mid is liquid enough and its IV is not pinned to the bisection floor:
+```
+fit_candidate = iv > 0.05 and mid >= 2.0
+```
+With at least 4 fit candidates the pipeline fits a quadratic in moneyness via normal equations (closed-form 3x3 solve, no external dependencies needed):
+```
+fitted_iv(m) = a * m^2 + b * m + c
+```
+
+![Round 3 volatility smile](./assets/extra/Round-3-Volatility-Smile.png)
+
+The figure above is reproduced by [plot_round_3_volatility_smile.ipynb](./notebooks/plot_round_3_volatility_smile.ipynb). Each color is one voucher strike, and each point is the implied vol at one historical snapshot — so as the underlying drifts over the round, every strike traces out an arc in moneyness space. Pooled across all 3 days the cloud paints the full smile: ATM vouchers (`VEV_5000`–`VEV_5500`, around `m ≈ 0`) sit near a vol of `0.33`, while the deep ITM (`VEV_4000`, `VEV_4500`) and deep OTM (`VEV_6000`, `VEV_6500`) wings lift sharply to vols of `1.0` and higher. A single parabola fit to all observations recovers a symmetric `σ(m) ≈ 0.10 m² + 0.33`, which matches the curvature of the cross-sectional smile that the live pipeline fits per-snapshot. The wing-IV blow-up is the same effect that motivates the live algorithm's `iv > 0.05 and mid >= 2.0` filter and its widened edges on the outermost strikes.
+That fitted IV is fed back into Black-Scholes per strike to produce the smile fair value, and the residual against the live mid becomes the rich/cheap signal:
+```
+smile_fair = bs_call(spot, strike, T, fitted_iv(moneyness))
+residual   = mid - smile_fair
+```
+Vouchers that fail the fit-candidate filter, or snapshots where fewer than 4 candidates are available, fall back to `smile_fair = mid` with a zero residual rather than extrapolating off a poorly-constrained curve. For non-voucher products (`HYDROGEL_PACK`, `VELVETFRUIT_EXTRACT`) the pipeline reuses the rolling-median-with-anchor fair from the live algorithm so the output CSV is directly comparable across products. The rolling parameters used for that leg are:
+```
+ANCHOR_WINDOW = 30
+ANCHOR_WEIGHT = 0.30   # HYDROGEL_PACK and VELVETFRUIT_EXTRACT
+vol_window    = 245    # longer window for sigma than for the median
+```
+The output (`fair_values_round3_option_smile.csv`) records `mid_price`, `fair_value`, `fair_source`, `moneyness`, `implied_vol`, `fitted_iv`, `residual`, and the fitted coefficients `(a, b, c)` per timestamp. In practice the residual track confirmed the intuition behind the live algorithm's anchor blend: the wings (`VEV_4000`, `VEV_6000`, `VEV_6500`) carry the largest residuals and the least reliable IVs, which is why the live quoting logic widens edges and skews more aggressively on those strikes rather than trusting their market mids on their own.
+
 ### Results
 
 ![Round 3 results](./assets/results/Round3_Results.png)
 
 These results were very promising, my algorithm had worked as intended and I was in a good position going into round 4.
+
+### Improvements
+
+Looking back at Round 3 with the smile chart in hand, the most obvious thing my algorithm gets wrong is the way it treats implied volatility. The `vev_iv_anchors` function collapses the whole option chain into a single number, `cross_section_iv = median(implied_vols)`, and then uses that one IV to price every strike with Black-Scholes. That is a flat-smile assumption, and the smile chart shows the smile is not flat at all.
+
+Concretely, at the reference snapshot used in the chart (spot ≈ 5243, T ≈ 3.5 days), the algorithm's per-strike IVs and the fitted smile compare as follows:
+```
+strike   algo IV    smile σ(m)
+4000     1.70       ~1.20
+4500     0.99       ~0.50
+5000     0.50       ~0.353
+5100     0.39       ~0.338
+5200     0.36       ~0.330
+5300     0.34       ~0.328
+5400     0.32       ~0.331
+5500     0.34       ~0.338
+median   0.373      (smile floor ≈ 0.327)
+```
+So the single `cross_section_iv` of ~0.37 sits between the ATM vol of ~0.33 and the wing vols that run from 0.5 all the way to 1.7. For the ATM strikes the IV anchor is roughly 10% too high; for the deep wings, pricing `VEV_4000` with σ = 0.37 instead of σ ≈ 1.7 puts the model value far below the market mid.
+
+Two things kept this from hurting the algorithm too much:
+1. `VEV_IV_BLEND = 0.25` only gives the IV anchor a quarter of the weight. The other 75% goes to the hand-tuned `PRODUCT_ANCHORS` (1260, 755, 265, ..., 6), which I had set by eye to match where each strike was actually trading. The smile is in the algorithm — just baked into hardcoded numbers rather than fitted from data.
+2. The rolling-median fair value still dominates many strikes (`anchor_weight` between 0.4 and 0.5), so the IV anchor never gets to move the fair value by more than half its distance from the rolling median anyway.
+
+The clean improvement is to replace the flat cross-sectional IV with a per-strike smile-fitted IV, exactly as the parabolic fit in the section above:
+```
+fitted_iv(m) = a * m^2 + b * m + c
+iv_anchor    = bs_call(spot, strike, T, fitted_iv(moneyness))
+```
+That would let me drop the hand-tuned `PRODUCT_ANCHORS` entirely (or shrink them to a small theta-decay offset), and it would handle `VEV_6000` and `VEV_6500` properly — those are the two strikes that currently have no fixed anchor and have to fall back to the cross-sectional IV alone, which is exactly where the flat-smile assumption is most wrong.
+
+I did not ship this during the round itself because retuning the anchor logic mid-competition felt riskier than refining what was already working. The smile-fitting pipeline that produced the chart above lives outside the live algorithm, and integrating it as the IV anchor source would be the natural follow-up for Round 5 (or any future options round).
 
 ## Round 4
 
