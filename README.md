@@ -211,3 +211,92 @@ Inventory is managed by skewing edges with each product's `skew_coef`. A long po
 These results were very promising, my algorithm had worked as intended and I was in a good position going into round 4.
 
 ## Round 4
+
+Items available for trading:
+- `HYDROGEL_PACK`
+- `VELVETFRUIT_EXTRACT`
+- `VEV_4000`
+- `VEV_4500`
+- `VEV_5000`
+- `VEV_5100`
+- `VEV_5200`
+- `VEV_5300`
+- `VEV_5400`
+- `VEV_5500`
+- `VEV_6000`
+- `VEV_6500`
+
+Time to expiration for the simulation round TTE was set at 4 days.
+
+Position limits:
+- `HYDROGEL_PACK: 200`
+- `VELVETFRUIT_EXTRACT: 200`
+- `VEV_4000: 300`
+- `VEV_4500: 300`
+- `VEV_5000: 300`
+- `VEV_5100: 300`
+- `VEV_5200: 300`
+- `VEV_5300: 300`
+- `VEV_5400: 300`
+- `VEV_5500: 300`
+- `VEV_6000: 300`
+- `VEV_6500: 300`
+
+### Historical Data
+
+![HYDROGEL_PACK price graph](./assets/historical_prices/Round-4/HYDROGEL_PACK.png)
+
+![VELVETFRUIT_EXTRACT price graph](./assets/historical_prices/Round-4/VELVETFRUIT_EXTRACT.png)
+
+![Combined vouchers price graphs](./assets/historical_prices/Round-4/COMBINED_VOUCHERS.png)
+
+### Discussion
+
+Round 4 was mainly a continuation of Round 3. The main difference was that we were given access to the trader IDs in the trading data. This gave us the opportunity to find patterns in the trading data that could be attributed to the behavior of one or more of the traders. I built a trade explorer to better visualize these relationships:
+
+! [Round 4 trade explorer](./assets/extra/Round-4-Trade-Explorer.png)
+
+Some trades seemed interesting, there were cases where sales were happening just before trend-reversals but my research could not find a relationship strong enough to be worth exploiting. I spent most of Round 4 on refining the strategies I had created in Round 3.
+
+### Strategy
+
+The overall structure did not change much: the algorithm still trades `HYDROGEL_PACK`, `VELVETFRUIT_EXTRACT`, and the `VEV_*` voucher products by estimating fair value, quoting around it, taking clearly mispriced book levels, and skewing quotes based on inventory.
+
+The main change from Round 3 was retuning. By this point, the IV-anchored voucher model was already in place, so Round 4 was not a new strategy so much as a more aggressive version of the same one. The fair value was still based on:
+
+- Rolling median market fair
+- Fixed hand-tuned anchor
+- For `VEV_*` products, a Black-Scholes implied-volatility anchor
+
+The option logic continued to use `VELVETFRUIT_EXTRACT` as the underlying. It parsed the strike from each `VEV_*` product, calculated implied volatility from available voucher mid-prices, took the median cross-sectional IV, and then repriced each voucher with Black-Scholes. These model prices were blended with fixed anchors using:
+```
+VEV_IV_BLEND = 0.25
+```
+The time-to-expiry assumption was also updated for the next round:
+```
+INITIAL_TTE_DAYS = 4
+DAYS_PER_YEAR = 365
+```
+The fixed anchors were retuned. This was a way of hardcoding theta decay into the algorithm, since the asset was mean-reverting there was not a big concern about computing theta decay reliably and dynamically:
+```
+HYDROGEL_PACK = 10000
+VELVETFRUIT_EXTRACT = 5250
+VEV_4000 = 1250
+VEV_4500 = 750
+VEV_5000 = 250
+VEV_5100 = 152
+VEV_5200 = 75
+VEV_5300 = 30
+VEV_5400 = 7
+VEV_5500 = 1
+```
+
+Compared with Round 3, the anchor weights became much stronger for many products. For example, `HYDROGEL_PACK` used `anchor_weight = 0.7`, while several far OTM vouchers used `anchor_weight = 0.99`. This meant the algorithm trusted the fixed/model anchor much more and the rolling market median less. These changes came about mainly as a result of manual backtesting adjustments.
+
+The market-making parameters were also adjusted per product. Some products used wider edge bounds and stronger inventory skew, especially `HYDROGEL_PACK`, `VEV_4000`, and the far OTM vouchers. The aim was to keep the same systematic market-making logic while making the quotes more product-specific.
+
+### Results
+
+![Round 4 results](./assets/results/Round4_Results.png)
+
+Overall, Round 4 was a refinement of the Round 3 strategy: use fixed valuations where useful, use Black-Scholes relative pricing for the vouchers, and tune each product's edge and inventory behavior more aggressively to harvest spread while staying within position limits. The results show a modest increase in PNL, so I would consider this time well spent, my algorithm was nearing top 100 in terms of performance.
