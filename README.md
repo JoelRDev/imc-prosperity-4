@@ -254,7 +254,7 @@ Position limits:
 
 Round 4 was mainly a continuation of Round 3. The main difference was that we were given access to the trader IDs in the trading data. This gave us the opportunity to find patterns in the trading data that could be attributed to the behavior of one or more of the traders. I built a trade explorer to better visualize these relationships:
 
-! [Round 4 trade explorer](./assets/extra/Round-4-Trade-Explorer.png)
+![Round 4 trade explorer](./assets/extra/Round-4-Trade-Explorer.png)
 
 Some trades seemed interesting, there were cases where sales were happening just before trend-reversals but my research could not find a relationship strong enough to be worth exploiting. I spent most of Round 4 on refining the strategies I had created in Round 3.
 
