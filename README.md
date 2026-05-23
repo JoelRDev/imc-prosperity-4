@@ -6,11 +6,17 @@ Items available for trading:
 - `ASH_COATED_OSMIUM`
 - `INTARIAN_PEPPER_ROOT`
 
+Position limits:
+- `ASH_COATED_OSMIUM: 80`
+- `INTARIAN_PEPPER_ROOT: 80`
+
 ### Historical Data
 
 ![ASH_COATED_OSMIUM price graph](./assets/historical_prices/Round-1/ASH_COATED_OSMIUM.png)
 
-![ASH_COATED_OSMIUM price graph](./assets/historical_prices/Round-1/INTARIAN_PEPPER_ROOT.png)
+![INTARIAN_PEPPER_ROOT price graph](./assets/historical_prices/Round-1/INTARIAN_PEPPER_ROOT.png)
+
+### Discussion
 
 Other than a brief encounter with setting up the datamodel and trader classes for Round 0 (tutorial round), this was my first experience of digesting price data and creating a Python algorithm intended to trade it profitably.
 
@@ -46,7 +52,7 @@ The `ASH_COATED_OSMIUM` algorithm is a rolling-median market maker. It stores th
 
 ![Round 1 results](./assets/results/Round1_Results.png)
 
-Round 1 results were not stellar, lead by a misunderstanding of the manual trading round.
+Round 1 results were less than stellar, lead by a misunderstanding of the manual trading round.
 
 ### Improvements
 
@@ -56,8 +62,34 @@ Items available for trading:
 - `ASH_COATED_OSMIUM`
 - `INTARIAN_PEPPER_ROOT`
 
+Position limits:
+- `ASH_COATED_OSMIUM: 80`
+- `INTARIAN_PEPPER_ROOT: 80`
+
 ### Historical Data
 
 ![ASH_COATED_OSMIUM price graph](./assets/historical_prices/Round-2/ASH_COATED_OSMIUM.png)
 
-![ASH_COATED_OSMIUM price graph](./assets/historical_prices/Round-2/INTARIAN_PEPPER_ROOT.png)
+![INTARIAN_PEPPER_ROOT price graph](./assets/historical_prices/Round-2/INTARIAN_PEPPER_ROOT.png)
+
+### Discussion
+
+The most valuable information we were given in Round 2 was that our assumptions from Round 1 had held. We got an extra day of trading data and the patterns had not changed, `ASH_COATED_OSMIUM` was still exhibiting its mean-reversion around 10,000 and `INTARIAN_PEPPER_ROOT` was continuing its linear climb up. This meant that the algorithms did not have to be reinvented, only adjusted. The wiki mentioned "The products `INTARIAN_PEPPER_ROOT` and `ASH_COATED_OSMIUM` are the same", giving the necessary indication that regime change would likely not be a major concern. My placement in the previous round however told me there were plenty of profits left on the table, there was work to do.
+
+One new opportunity was given to us. In Round 2, teams could bid for extra quotes in the order book. My initial thinking was that expanding the size of the order book could be beneficial, after all, more participants in the market would allow me to get my market-making positions filled more quickly. Upon further inspection however, it became clear that this would not be worth the cost.
+
+By introducing more players into the market, spreads were likely to decrease as market-making participants would want to quote around the fair value to get their trades filled. A decrease in spreads meant less profitable trades, I therefore decided to bid 0 and to continue refining my existing algorithms.
+
+### ASH_COATED_OSMIUM
+
+The algorithm keeps the 30-tick rolling median fair value but separates volatility estimation into a longer 245-tick window. It also improves execution by sweeping multiple profitable book levels instead of only checking the best bid/ask. A position-reducing quote at fair value is added when inventory exceeds half the limit, helping unload risk without waiting for the normal edge quotes.
+
+### INTARIAN_PEPPER_ROOT
+
+The same long-with-safety logic remains, but re-entry is faster: REENTRY_BARS drops from 30 to 10. The aim was still to hold the upward-drifting product most of the time, while stepping aside during flash-crash or high-volatility regimes.
+
+### Results
+
+![Round 2 results](./assets/results/Round2_Results.png)
+
+These results were promising. My algorithm had improved and my manual trading performance was very good. I cleared the `200,000 XIREC` threshold for qualifying for Round 3, where the leaderboard would reset.
