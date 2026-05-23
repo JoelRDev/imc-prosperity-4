@@ -1,3 +1,5 @@
+WORK IN PROGRESS
+
 # IMC Prosperity 4
 
 ## Round 1
@@ -35,7 +37,7 @@ resid_std < 1.5
 ```
 The purpose of this implementation was to ensure that the position would only be re-entered during calm, upward trending periods in the market.
 
-### ASH_COATED_OSMIUM
+### `ASH_COATED_OSMIUM`
 This asset was the more meaningful learning experience from Round 1. As seen from the price graph, `ASH_COATED_OSMIUM` was a mean-reverting asset. This meant that it tended to fluctuate around `price = 10,000`.
 
 My first thought was to very simply go long and clear short inventory at prices below 10,000 and to go short and clear long inventory at prices above 10,000. There were several considerations that lead me to learn a lot about how mean-reverting assets are traded at a basic level:
@@ -53,8 +55,6 @@ The `ASH_COATED_OSMIUM` algorithm is a rolling-median market maker. It stores th
 ![Round 1 results](./assets/results/Round1_Results.png)
 
 Round 1 results were less than stellar, lead by a misunderstanding of the manual trading round.
-
-### Improvements
 
 ## Round 2
 
@@ -80,11 +80,11 @@ One new opportunity was given to us. In Round 2, teams could bid for extra quote
 
 By introducing more players into the market, spreads were likely to decrease as market-making participants would want to quote around the fair value to get their trades filled. A decrease in spreads meant less profitable trades, I therefore decided to bid 0 and to continue refining my existing algorithms.
 
-### ASH_COATED_OSMIUM
+### `ASH_COATED_OSMIUM`
 
 The algorithm keeps the 30-tick rolling median fair value but separates volatility estimation into a longer 245-tick window. It also improves execution by sweeping multiple profitable book levels instead of only checking the best bid/ask. A position-reducing quote at fair value is added when inventory exceeds half the limit, helping unload risk without waiting for the normal edge quotes.
 
-### INTARIAN_PEPPER_ROOT
+### `INTARIAN_PEPPER_ROOT`
 
 The same long-with-safety logic remains, but re-entry is faster: REENTRY_BARS drops from 30 to 10. The aim was still to hold the upward-drifting product most of the time, while stepping aside during flash-crash or high-volatility regimes.
 
@@ -93,3 +93,120 @@ The same long-with-safety logic remains, but re-entry is faster: REENTRY_BARS dr
 ![Round 2 results](./assets/results/Round2_Results.png)
 
 These results were promising. My algorithm had improved and my manual trading performance was very good. I cleared the `200,000 XIREC` threshold for qualifying for Round 3, where the leaderboard would reset.
+
+## Round 3
+
+Items available for trading:
+- `HYDROGEL_PACK`
+- `VELVETFRUIT_EXTRACT`
+- `VEV_4000`
+- `VEV_4500`
+- `VEV_5000`
+- `VEV_5100`
+- `VEV_5200`
+- `VEV_5300`
+- `VEV_5400`
+- `VEV_5500`
+- `VEV_6000`
+- `VEV_6500`
+
+The voucher values represent the strike price of the options contract. Time to expiration at the beginning of the historical data was 8 days, therefore for the simulation round TTE would be set at 5 days.
+
+Position limits:
+- `HYDROGEL_PACK: 200`
+- `VELVETFRUIT_EXTRACT: 200`
+- `VEV_4000: 300`
+- `VEV_4500: 300`
+- `VEV_5000: 300`
+- `VEV_5100: 300`
+- `VEV_5200: 300`
+- `VEV_5300: 300`
+- `VEV_5400: 300`
+- `VEV_5500: 300`
+- `VEV_6000: 300`
+- `VEV_6500: 300`
+
+### Historical Data
+
+![HYDROGEL_PACK price graph](./assets/historical_prices/Round-3/HYDROGEL_PACK.png)
+
+![VELVETFRUIT_EXTRACT price graph](./assets/historical_prices/Round-3/VELVETFRUIT_EXTRACT.png)
+
+![Combined vouchers price graphs](./assets/historical_prices/Round-3/COMBINED_VOUCHERS.png)
+
+### Discussion
+
+The most important takeaways from the historical price data in this round:
+- Trends appear to be mean-reverting
+- Higher strike prices (more OTM) have higher volatility but consistent directional movements with the other vouchers (following `VELVETFRUIT_EXTRACT`)
+- Volume seems to be decreasing as strike prices get more OTM
+
+### Strategy
+
+Round 3 uses a common strategy for all tradable assets. It can still be best described as an anchored market maker. For each product, the algorithm keeps a 30-tick rolling mid-price cache and uses the median of those mids as the market-derived fair value. This market fair value is then blended with an anchor. The important change from the earlier version is that the anchor weight is no longer the same for every product.
+
+The fair value is:
+```
+fair = (1 - anchor_weight) * rolling_median + anchor_weight * anchor
+```
+The configured fixed anchors are:
+```
+HYDROGEL_PACK = 10000
+VELVETFRUIT_EXTRACT = 5250
+VEV_4000 = 1260
+VEV_4500 = 755
+VEV_5000 = 265
+VEV_5100 = 170
+VEV_5200 = 97
+VEV_5300 = 46
+VEV_5400 = 15
+VEV_5500 = 6
+```
+`VEV_6000` and `VEV_6500` have position limits but no fixed anchors.
+
+Since the `VEV` products were options contracts with the strike price included in the name, I also added a simple Black-Scholes pricing component. The algorithm uses `VELVETFRUIT_EXTRACT` as the underlying, parses the strike from the voucher name, and calculates implied volatility from the available voucher mid-prices. It then takes the median implied volatility across the vouchers and uses that to create an IV-based anchor for each `VEV` product. Time to expiry is modeled with:
+```
+INITIAL_TTE_DAYS = 5
+DAYS_PER_YEAR = 365
+```
+For vouchers with both a fixed anchor and an IV anchor, the final anchor is:
+```
+anchor = 0.75 * fixed_anchor + 0.25 * iv_anchor
+```
+If a voucher has no fixed anchor, as is the case for `VEV_6000` and `VEV_6500`, the IV anchor can be used on its own when it is available. Otherwise, the product falls back to the rolling median.
+
+The quote edge is volatility-based, but it also takes the current spread into account. It uses half of the current spread plus the standard deviation of the 30 recent mids multiplied by `k_vol`, then clips this between the product's `min_edge` and `max_edge`:
+```
+base_edge = half_spread + k_vol * stdev(recent_mids)
+```
+
+The product-specific parameters are:
+```
+HYDROGEL_PACK: anchor_weight = 0.20, k_vol = 8.0, min_edge = 4.0, max_edge = 10.0, skew_coef = 3.0
+VELVETFRUIT_EXTRACT: anchor_weight = 0.35, k_vol = 5.0, min_edge = 1.0, max_edge = 7.0, skew_coef = 3.0
+VEV_4000: anchor_weight = 0.40, k_vol = 5.0, min_edge = 1.0, max_edge = 6.0, skew_coef = 2.0
+VEV_4500: anchor_weight = 0.40, k_vol = 5.0, min_edge = 1.0, max_edge = 4.0, skew_coef = 3.5
+VEV_5000: anchor_weight = 0.45, k_vol = 5.0, min_edge = 1.0, max_edge = 4.0, skew_coef = 4.5
+VEV_5100: anchor_weight = 0.45, k_vol = 5.0, min_edge = 1.0, max_edge = 4.0, skew_coef = 5.0
+VEV_5200: anchor_weight = 0.45, k_vol = 5.0, min_edge = 1.0, max_edge = 2.0, skew_coef = 6.0
+VEV_5300: anchor_weight = 0.50, k_vol = 5.0, min_edge = 1.0, max_edge = 2.0, skew_coef = 6.0
+VEV_5400: anchor_weight = 0.50, k_vol = 5.0, min_edge = 1.0, max_edge = 2.0, skew_coef = 6.0
+VEV_5500: anchor_weight = 0.50, k_vol = 5.0, min_edge = 1.0, max_edge = 2.0, skew_coef = 6.0
+VEV_6000: anchor_weight = 0.50, k_vol = 5.0, min_edge = 1.0, max_edge = 2.0, skew_coef = 6.0
+VEV_6500: anchor_weight = 0.50, k_vol = 5.0, min_edge = 1.0, max_edge = 2.0, skew_coef = 6.0
+```
+
+Execution has three layers:
+
+- It aggressively buys asks below fair - buy_edge.
+- It aggressively sells bids above fair + sell_edge.
+- It places passive bid/ask quotes at rounded fair-minus-edge and fair-plus-edge if capacity remains.
+
+Inventory is managed by skewing edges with each product's `skew_coef`. A long position widens the buy edge and tightens the sell edge, encouraging selling; a short position does the opposite. If absolute inventory exceeds half the limit, it also places a position-reducing order at rounded fair value when possible.
+
+### Results
+
+![Round 3 results](./assets/results/Round3_Results.png)
+
+These results were very promising, my algorithm had worked as intended and I was in a good position going into round 4.
+
