@@ -1,4 +1,4 @@
-WORK IN PROGRESS
+# Rounds 5 and cross-round retrospective in progress (last updated 24th May 2026)
 
 # IMC Prosperity 4
 
