@@ -1,4 +1,4 @@
-# Rounds 5 and cross-round retrospective in progress (last updated 24th May 2026)
+# Rounds 5 and cross-round retrospective in progress (last updated 28th May 2026)
 
 # IMC Prosperity 4
 
@@ -371,3 +371,89 @@ The market-making parameters were also adjusted per product. Some products used 
 ![Round 4 results](./assets/results/Round4_Results.png)
 
 Overall, Round 4 was a refinement of the Round 3 strategy: use fixed valuations where useful, use Black-Scholes relative pricing for the vouchers, and tune each product's edge and inventory behavior more aggressively to harvest spread while staying within position limits. The results show a modest increase in PNL, so I would consider this time well spent, my algorithm was nearing top 100 in terms of performance.
+
+## Round 5
+
+Items available for trading:
+- `GALAXY_SOUNDS_DARK_MATTER`
+- `GALAXY_SOUNDS_BLACK_HOLES`
+- `GALAXY_SOUNDS_PLANETARY_RINGS`
+- `GALAXY_SOUNDS_SOLAR_WINDS`
+- `GALAXY_SOUNDS_SOLAR_FLAMES`
+- `SLEEP_POD_SUEDE`
+- `SLEEP_POD_LAMB_WOOL`
+- `SLEEP_POD_POLYESTER`
+- `SLEEP_POD_NYLON`
+- `SLEEP_POD_COTTON`
+- `MICROCHIP_CIRCLE`
+- `MICROCHIP_OVAL`
+- `MICROCHIP_SQUARE`
+- `MICROCHIP_RECTANGLE`
+- `MICROCHIP_TRIANGLE`
+- `PEBBLES_XS`
+- `PEBBLES_S`
+- `PEBBLES_M`
+- `PEBBLES_L`
+- `PEBBLES_XL`
+- `ROBOT_VACUUMING`
+- `ROBOT_MOPPING`
+- `ROBOT_DISHES`
+- `ROBOT_LAUNDRY`
+- `ROBOT_IRONING`
+- `UV_VISOR_YELLOW`
+- `UV_VISOR_AMBER`
+- `UV_VISOR_ORANGE`
+- `UV_VISOR_RED`
+- `UV_VISOR_MAGENTA`
+- `TRANSLATOR_SPACE_GRAY`
+- `TRANSLATOR_ASTRO_BLACK`
+- `TRANSLATOR_ECLIPSE_CHARCOAL`
+- `TRANSLATOR_GRAPHITE_MIST`
+- `TRANSLATOR_VOID_BLUE`
+- `PANEL_1X2`
+- `PANEL_2X2`
+- `PANEL_1X4`
+- `PANEL_2X4`
+- `PANEL_4X4`
+- `OXYGEN_SHAKE_MORNING_BREATH`
+- `OXYGEN_SHAKE_EVENING_BREATH`
+- `OXYGEN_SHAKE_MINT`
+- `OXYGEN_SHAKE_CHOCOLATE`
+- `OXYGEN_SHAKE_GARLIC`
+- `SNACKPACK_CHOCOLATE`
+- `SNACKPACK_VANILLA`
+- `SNACKPACK_PISTACHIO`
+- `SNACKPACK_STRAWBERRY`
+- `SNACKPACK_RASPBERRY`
+
+Position limits:
+- All products: `10`
+
+### Historical Data
+
+![Round 5 asset prices](./assets/historical_prices/Round-5/COMBINED_ROUND5.png)
+
+### Discussion
+
+As is evident from the above graph (note: some assets are missing from the legend but are still included), it was not clear after a quick analysis what the strategies for this round might look like. Especially for a team of one, it was evident that this round would be time-consuming.
+
+I initially looked to see if the "baskets" held any useful information. There were 10 baskets in this dataset, with 5 assets in each:
+
+- `GALAXY_SOUNDS`
+- `SLEEP_POD`
+- `MICROCHIP`
+- `PEBBLES`
+- `ROBOT`
+- `UV_VISOR`
+- `TRANSLATOR`
+- `PANEL`
+- `OXYGEN_SHAKE`
+- `SNACKPACK`
+
+![Basket prices](./assets/historical_prices/Round-5/BASKET_PRICES.png)
+
+The most useful part of visualizing the baskets was seeing the chart for `PEBBLES`:
+
+![PEBBLES basket price chart](./assets/historical_prices/Round-5/PEBBLES_BASKET.png)
+
+This basket of equal weightings resulted in a chart that only slightly deviated from a mean of 10,000. The trading algorithm could trade this pattern profitably.
