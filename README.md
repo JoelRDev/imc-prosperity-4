@@ -457,3 +457,85 @@ The most useful part of visualizing the baskets was seeing the chart for `PEBBLE
 ![PEBBLES basket price chart](./assets/historical_prices/Round-5/PEBBLES_BASKET.png)
 
 This basket of equal weightings resulted in a chart that only slightly deviated from a mean of 10,000. The trading algorithm could trade this pattern profitably.
+
+### `PEBBLES Basket`
+
+The algorithm used arbitrage within the PEBBLES basket to trade profitably. When the combined ask was below 49,999 the algorithm would buy as much inventory as it could, and if it was at 50,001 or above it would sell as much as it could.
+
+```mermaid
+flowchart LR
+    A[PEBBLES top of book] --> B{Five-leg executable sum}
+    B -->|sum ask at or below 49,999| C[Buy all PEBBLES legs]
+    B -->|inside the no-arb band| D[No hard basket arb]
+    B -->|sum bid at or above 50,001| E[Sell all PEBBLES legs]
+    D --> F[Passive leg quotes]
+    F --> G[Fair adjusted by basket residual, leg imbalance, and inventory]
+```
+
+The basket fair value was `50,000`, with each of the five `PEBBLES` products capped at `10`. The maximum hard basket trade size was therefore also `10`, and the algorithm traded all legs together to avoid building an unintended outright position in one pebble product.
+
+### Strategy
+
+Round 5 was much larger than the earlier rounds. Instead of focusing on one or two products, `round-5.py` became a portfolio strategy across many low-limit products, all capped at `10`. The main idea was to exploit cross-sectional structure wherever it appeared: exact basket sums, EMA mean reversion, pair spreads, jump reversals, and passive spread capture.
+
+```mermaid
+flowchart TB
+    A[Round 5 market data] --> B[Exact basket relationships]
+    A --> C[EMA fair values]
+    A --> D[One-tick jump signals]
+    A --> E[Microprice and spread signals]
+
+    B --> B1[PEBBLES hard basket arbitrage]
+    B --> B2[SNACKPACK and bucket basket trades]
+    C --> C1[Pair relative-value trades]
+    C --> C2[Slow single-name mean reversion]
+    D --> D1[Jump-reversal trades]
+    E --> E1[Snackpack passive market making]
+    E --> E2[Secondary passive market making]
+
+    B1 --> F[Orders]
+    B2 --> F
+    C1 --> F
+    C2 --> F
+    D1 --> F
+    E1 --> F
+    E2 --> F
+```
+
+There were several independent modules:
+
+- `PEBBLES` basket arbitrage traded all five pebble products together when their combined ask was below `49,999` or their combined bid was above `50,001`, around a fair basket sum of `50,000`.
+- Passive `PEBBLES` quoting ran when no hard basket arbitrage existed. It quoted each leg around a fair value adjusted by total basket residual, leg imbalance, and inventory skew, trying to earn spread while keeping the basket balanced.
+- Jump-reversal trades targeted products including `ROBOT_DISHES`, `ROBOT_IRONING`, `OXYGEN_SHAKE_CHOCOLATE`, `UV_VISOR_RED`, `MICROCHIP_OVAL`, and `PANEL_1X2`. The signal looked for large one-tick mid-price jumps and bet on partial reversal using product-specific negative beta, threshold, target size, edge buffer, and maximum book levels to cross.
+- `SNACKPACK` basket mean reversion tracked an EMA fair value for the sum of five snackpack products. If the whole basket was cheap versus the EMA by more than `100`, it bought all legs; if rich by more than `100`, it sold all legs. The basket size was `2`.
+- Pair relative-value trades tracked EMA spreads between configured product pairs. When the executable top-of-book spread deviated enough, the algorithm bought the cheap leg and sold the rich leg. This covered pebble pairs, microchip pairs, translator pairs, robot pairs, sleep pod pairs, UV visor pairs, oxygen shake pairs, panel pairs, and snackpack pairs.
+- Bucket basket EMA trades extended the snackpack idea to full product groups: `ROBOT`, `OXYGEN_SHAKE`, `UV_VISOR`, and `GALAXY_SOUNDS`. Each group traded all legs together when its summed price moved far enough from its EMA.
+- `SNACKPACK` passive market making maintained an EMA and residual variance per snackpack product. It quoted passively when z-score and microprice signals suggested mean reversion, with inventory skew.
+- Slow single-name mean reversion targeted products such as `PANEL_2X2`, `MICROCHIP_TRIANGLE`, `MICROCHIP_RECTANGLE`, `UV_VISOR_MAGENTA`, and `GALAXY_SOUNDS_DARK_MATTER`. It used EMA, residual standard deviation, z-score entry thresholds, aggressive crossing when the edge was large, and passive quotes when deviation was milder.
+- Secondary passive market making quoted selected products with wider spreads, using microprice-adjusted fair value and soft inventory caps. This was only enabled for names with apparently better historical markouts.
+
+The execution order mattered because many products were eligible for more than one signal. Earlier modules had priority, and later modules skipped a product if it already had an order. This prevented the strategy from stacking conflicting instructions on the same 10-lot position limit.
+
+```mermaid
+flowchart LR
+    A[Start tick] --> B[PEBBLES hard arb]
+    B --> C[Jump reversal]
+    C --> D[Pair relative value]
+    D --> E[PEBBLES passive]
+    E --> F[SNACKPACK basket]
+    F --> G[Bucket EMA baskets]
+    G --> H[SNACKPACK passive MM]
+    H --> I[Slow single-name MR]
+    I --> J[Secondary passive MM]
+    J --> K[Final orders]
+
+    C -. skip if product already ordered .-> K
+    D -. skip conflicting legs .-> K
+    G -. skip entire bucket if any leg already ordered .-> K
+    H -. passive quote only if product is free .-> K
+    I -. passive or aggressive only if product is free .-> K
+    J -. last-priority spread capture .-> K
+```
+
+The result was a portfolio-style strategy rather than a single-model strategy. The strongest opportunities were exact or near-exact cross-sectional trades, while the passive modules acted as lower-priority spread capture when the more directional signals were inactive.
+
